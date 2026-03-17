@@ -227,3 +227,32 @@ Al finalizar, tu repositorio de la Actividad 6.2 debe incluir al menos:
 **Puntuación máxima: 10 puntos.**
 
 ---
+
+## 🤖 Evaluación automática y redacción de informe
+
+Esta actividad incluye una evaluación automática similar a la de la Actividad 6.1, adaptada a ramas:
+
+- Workflow: `.github/workflows/evaluacion.yml`
+- Script de evaluación: `tools/evaluar_repo.py`
+- Script de redacción IA: `tools/ai_redactor.py`
+
+### ¿Qué genera?
+
+Al ejecutarse en GitHub Actions, se generan los siguientes archivos en `reportes/`:
+
+- `informe.md` (resumen técnico de evaluación)
+- `informe.json` (métricas en formato estructurado)
+- `metricas.csv` (puntuaciones por criterio)
+- `arbol.txt` (resumen del árbol del repositorio)
+
+Si hay credenciales de IA configuradas en Secrets/Variables, también se generan:
+
+- `retro.md` (retroalimentación redactada por IA)
+- `retro.docx` (versión formal en Word)
+
+### Parámetros del workflow (`workflow_dispatch`)
+
+- `min_commits` (por defecto: `3`)
+- `required_files` (por defecto: `README.md,reflexion-6-2.md`)
+
+---
