@@ -18,7 +18,7 @@ on:
       required_files:
         description: "Archivos obligatorios separados por coma"
         required: false
-        default: "README.md,reflexion-6-2.md"
+        default: "app.txt,LICENSE.txt,cp1-ramas-iniciales.txt,cp2-feature-branch.txt,cp3-comparacion-ramas.md,cp4-multiples-ramas.txt,reflexion-6-2.md"
 
 jobs:
   evaluar:
@@ -37,7 +37,7 @@ jobs:
       - name: Ejecutar evaluacion
         env:
           MIN_COMMITS: ${{ github.event_name == 'workflow_dispatch' && inputs.min_commits || '3' }}
-          REQUIRED_FILES: ${{ github.event_name == 'workflow_dispatch' && inputs.required_files || 'README.md,reflexion-6-2.md' }}
+          REQUIRED_FILES: ${{ github.event_name == 'workflow_dispatch' && inputs.required_files || 'app.txt,LICENSE.txt,cp1-ramas-iniciales.txt,cp2-feature-branch.txt,cp3-comparacion-ramas.md,cp4-multiples-ramas.txt,reflexion-6-2.md' }}
         run: |
           python tools/evaluar_repo.py \
             --repo-root . \

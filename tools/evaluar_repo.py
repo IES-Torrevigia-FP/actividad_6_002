@@ -182,7 +182,7 @@ def score_section(exists: bool, ok: bool) -> int:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--repo-root', required=True)
-    ap.add_argument('--required', default='README.md,reflexion-6-2.md')
+    ap.add_argument('--required', default='app.txt,LICENSE.txt,cp1-ramas-iniciales.txt,cp2-feature-branch.txt,cp3-comparacion-ramas.md,cp4-multiples-ramas.txt,reflexion-6-2.md')
     ap.add_argument('--min-commits', default='3')
     ap.add_argument('--outdir', default='reportes')
     args = ap.parse_args()
@@ -230,7 +230,7 @@ def main():
                 continue
             if p.is_file() and p.suffix.lower() in ('.md', '.png', '.jpg', '.jpeg', '.txt', ''):
                 evidencias_presentes.append(str(p.relative_to(root)))
-    evidencias_ok = len(set(evidencias_presentes)) >= 4
+    evidencias_ok = len(set(evidencias_presentes)) >= 6
 
     excluded_dirs = {'.git', outdir.name}
     files_info = analyze_files(root, exclude_dirs=excluded_dirs)
@@ -243,21 +243,35 @@ def main():
     if missing:
         s_estructura = 0
 
-    s_readme = score_section(readme_path.exists(), readme_ok)
-
+    # Rúbrica oficial: 4 pts ramas + 3 pts evidencias + 3 pts reflexión = 10
     commits_ok = commits_info['count'] >= min_commits and commits_info['quality'] >= 0.6
     branches_found = len(branches_info['found_expected'])
     if commits_ok and branches_found >= 3:
+        s_git_ramas = 4
+    elif commits_info['count'] >= min_commits or branches_found >= 2:
         s_git_ramas = 2
     elif commits_info['count'] > 0 or branches_found > 0:
         s_git_ramas = 1
     else:
         s_git_ramas = 0
 
-    s_evid = 2 if evidencias_ok else (1 if evidencias_presentes else 0)
-    s_reflex = score_section(reflex_path.exists(), reflex_ok)
+    if evidencias_ok:
+        s_evid = 3
+    elif len(set(evidencias_presentes)) >= 3:
+        s_evid = 2
+    elif evidencias_presentes:
+        s_evid = 1
+    else:
+        s_evid = 0
 
-    total = s_estructura + s_readme + s_git_ramas + s_evid + s_reflex
+    if reflex_ok:
+        s_reflex = 3
+    elif reflex_path.exists() and reflex_stats['words'] > 0:
+        s_reflex = 1
+    else:
+        s_reflex = 0
+
+    total = s_git_ramas + s_evid + s_reflex
 
     resumen = {
         'repo_default_branch': default_branch,
@@ -271,10 +285,9 @@ def main():
         'files_info': files_info,
         'scores': {
             'estructura': s_estructura,
-            'readme': s_readme,
-            'git_ramas': s_git_ramas,
-            'evidencias': s_evid,
-            'reflexion': s_reflex,
+            'git_ramas (max_4)': s_git_ramas,
+            'evidencias (max_3)': s_evid,
+            'reflexion (max_3)': s_reflex,
             'total': total,
             'sobre': 10,
         },
@@ -287,10 +300,9 @@ def main():
         w = csv.writer(f)
         w.writerow(['criterio', 'puntuacion'])
         w.writerow(['estructura', s_estructura])
-        w.writerow(['readme', s_readme])
-        w.writerow(['git_ramas', s_git_ramas])
-        w.writerow(['evidencias', s_evid])
-        w.writerow(['reflexion', s_reflex])
+        w.writerow(['git_ramas (max 4)', s_git_ramas])
+        w.writerow(['evidencias (max 3)', s_evid])
+        w.writerow(['reflexion (max 3)', s_reflex])
         w.writerow(['total', total])
 
     def badge(score: int) -> str:
@@ -316,10 +328,9 @@ def main():
     md.append('| Criterio | Puntuacion |')
     md.append('|---|---:|')
     md.append(f"| Estructura del repositorio | {s_estructura}/2 |")
-    md.append(f"| README.md | {s_readme}/2 |")
-    md.append(f"| Uso de Git y ramas | {s_git_ramas}/2 |")
-    md.append(f"| Evidencias | {s_evid}/2 |")
-    md.append(f"| Reflexion 6.2 | {s_reflex}/2 |")
+    md.append(f"| Uso de Git y ramas (`git branch`, `checkout`) | {s_git_ramas}/4 |")
+    md.append(f"| Evidencias (checkpoints + archivos) | {s_evid}/3 |")
+    md.append(f"| Reflexion 6.2 | {s_reflex}/3 |")
     md.append(f"| **Total** | **{total}/10** |")
     md.append('')
 
@@ -332,6 +343,13 @@ def main():
     md.append(f"- Encabezados: {readme_stats.get('headings', 0)}  ")
     md.append(f"- Imagenes: {readme_stats.get('images', 0)}  ")
     md.append(f"- Enlaces: {readme_stats.get('links', 0)}  ")
+        md.append('## Archivos obligatorios')
+        md.append(f"Requeridos: {', '.join(required)}  ")
+        if missing:
+            md.append(f"Faltantes: {', '.join(missing)}  ")
+        else:
+            md.append('Todos presentes.  ')
+        md.append('')
     md.append('')
 
     md.append('## Commits')
