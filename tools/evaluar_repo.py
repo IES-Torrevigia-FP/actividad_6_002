@@ -343,13 +343,14 @@ def main():
     md.append(f"- Encabezados: {readme_stats.get('headings', 0)}  ")
     md.append(f"- Imagenes: {readme_stats.get('images', 0)}  ")
     md.append(f"- Enlaces: {readme_stats.get('links', 0)}  ")
-        md.append('## Archivos obligatorios')
-        md.append(f"Requeridos: {', '.join(required)}  ")
-        if missing:
-            md.append(f"Faltantes: {', '.join(missing)}  ")
-        else:
-            md.append('Todos presentes.  ')
-        md.append('')
+    md.append('')
+
+    md.append('## Archivos obligatorios')
+    md.append(f"Requeridos: {', '.join(required)}  ")
+    if missing:
+        md.append(f"Faltantes: {', '.join(missing)}  ")
+    else:
+        md.append('Todos presentes.  ')
     md.append('')
 
     md.append('## Commits')
