@@ -112,10 +112,16 @@ def analyze_commits(root: Path) -> dict:
     return {'count': max(count, len(commits)), 'items': commits, 'avg_msg_len': round(avg_len, 1), 'quality': round(avg_quality, 2)}
 
 
-def analyze_branches(root: Path) -> dict:
-    expected = {'main', 'feature-mensaje-bienvenida', 'feature-licencia'}
+def analyze_branches(root: Path, default_branch: str | None = None) -> dict:
+    expected_features = {'feature-mensaje-bienvenida', 'feature-licencia'}
+    principal_candidates = set()
+    if default_branch and default_branch.strip() and default_branch != '(unknown)':
+        principal_candidates.add(default_branch.strip())
+    principal_candidates.update({'main', 'master'})
+
     local_branches = set()
     remote_branches = set()
+    remote_heads = set()
 
     try:
         out_local = run_git(['for-each-ref', '--format=%(refname:short)', 'refs/heads'], cwd=root)
@@ -139,15 +145,51 @@ def analyze_branches(root: Path) -> dict:
     except Exception:
         pass
 
-    all_branches = sorted(local_branches.union(remote_branches))
-    found_expected = sorted(expected.intersection(set(all_branches)))
-    missing_expected = sorted(expected.difference(set(all_branches)))
+    # En CI (actions/checkout), no siempre se descargan todas las refs remotas.
+    # ls-remote consulta directamente los heads en origin.
+    try:
+        out_heads = run_git(['ls-remote', '--heads', 'origin'], cwd=root)
+        for line in out_heads.splitlines():
+            parts = line.strip().split()
+            if len(parts) >= 2 and parts[1].startswith('refs/heads/'):
+                remote_heads.add(parts[1][len('refs/heads/'):])
+    except Exception:
+        pass
+
+    try:
+        out_all = run_git(['branch', '-a', '--format=%(refname:short)'], cwd=root)
+        for line in out_all.splitlines():
+            b = line.strip()
+            if not b or b == 'origin/HEAD':
+                continue
+            if b.startswith('origin/'):
+                b = b[len('origin/'):]
+                remote_branches.add(b)
+            else:
+                local_branches.add(b)
+    except Exception:
+        pass
+
+    all_set = local_branches.union(remote_branches).union(remote_heads)
+    all_branches = sorted(all_set)
+    found_features = sorted(expected_features.intersection(all_set))
+    missing_features = sorted(expected_features.difference(all_set))
+    main_or_default_detected = any(b in all_set for b in principal_candidates)
+
+    expected = sorted(expected_features.union(principal_candidates))
+    found_expected = sorted(set(found_features).union(principal_candidates.intersection(all_set)))
+    missing_expected = sorted(set(expected).difference(set(found_expected)))
 
     return {
         'all': all_branches,
-        'expected': sorted(expected),
+        'expected': expected,
         'found_expected': found_expected,
         'missing_expected': missing_expected,
+        'expected_features': sorted(expected_features),
+        'found_expected_features': found_features,
+        'missing_expected_features': missing_features,
+        'main_or_default_detected': main_or_default_detected,
+        'principal_candidates': sorted(principal_candidates),
     }
 
 
@@ -206,7 +248,7 @@ def main():
             default_branch = '(unknown)'
 
     commits_info = analyze_commits(root)
-    branches_info = analyze_branches(root)
+    branches_info = analyze_branches(root, default_branch=default_branch)
     missing = [f for f in required if not (root / f).exists()]
 
     readme_path = root / 'README.md'
@@ -245,12 +287,15 @@ def main():
 
     # Rúbrica oficial: 4 pts ramas + 3 pts evidencias + 3 pts reflexión = 10
     commits_ok = commits_info['count'] >= min_commits and commits_info['quality'] >= 0.6
-    branches_found = len(branches_info['found_expected'])
-    if commits_ok and branches_found >= 3:
+    features_found = len(branches_info['found_expected_features'])
+    main_found = bool(branches_info['main_or_default_detected'])
+    if commits_ok and features_found >= 2 and main_found:
         s_git_ramas = 4
-    elif commits_info['count'] >= min_commits or branches_found >= 2:
+    elif features_found >= 2:
+        s_git_ramas = 3
+    elif features_found == 1 and (commits_info['count'] > 0 or main_found):
         s_git_ramas = 2
-    elif commits_info['count'] > 0 or branches_found > 0:
+    elif commits_info['count'] > 0 or main_found:
         s_git_ramas = 1
     else:
         s_git_ramas = 0
@@ -283,8 +328,14 @@ def main():
         'reflexion_stats': reflex_stats,
         'evidencias_encontradas': sorted(set(evidencias_presentes)),
         'files_info': files_info,
+        'checks_no_puntuables': {
+            'estructura': {
+                'score_referencia': s_estructura,
+                'max_referencia': 2,
+                'estado': 'ok' if s_estructura == 2 else ('parcial' if s_estructura == 1 else 'ko'),
+            }
+        },
         'scores': {
-            'estructura': s_estructura,
             'git_ramas (max_4)': s_git_ramas,
             'evidencias (max_3)': s_evid,
             'reflexion (max_3)': s_reflex,
@@ -299,7 +350,6 @@ def main():
     with (outdir / 'metricas.csv').open('w', newline='', encoding='utf-8') as f:
         w = csv.writer(f)
         w.writerow(['criterio', 'puntuacion'])
-        w.writerow(['estructura', s_estructura])
         w.writerow(['git_ramas (max 4)', s_git_ramas])
         w.writerow(['evidencias (max 3)', s_evid])
         w.writerow(['reflexion (max 3)', s_reflex])
@@ -327,11 +377,19 @@ def main():
     md.append('## Resultado por criterios')
     md.append('| Criterio | Puntuacion |')
     md.append('|---|---:|')
-    md.append(f"| Estructura del repositorio | {s_estructura}/2 |")
     md.append(f"| Uso de Git y ramas (`git branch`, `checkout`) | {s_git_ramas}/4 |")
     md.append(f"| Evidencias (checkpoints + archivos) | {s_evid}/3 |")
     md.append(f"| Reflexion 6.2 | {s_reflex}/3 |")
     md.append(f"| **Total** | **{total}/10** |")
+    md.append('')
+
+    md.append('## Validaciones adicionales (no puntuan)')
+    if s_estructura == 2:
+        md.append('- Estructura del repositorio: OK')
+    elif s_estructura == 1:
+        md.append('- Estructura del repositorio: Parcial (hay archivos grandes)')
+    else:
+        md.append('- Estructura del repositorio: KO (faltan archivos obligatorios)')
     md.append('')
 
     if missing:
@@ -371,9 +429,14 @@ def main():
             md.append(f"- {b}")
     else:
         md.append('- No se detectaron ramas en refs locales/remotas.')
-    if branches_info['missing_expected']:
+    if branches_info['missing_expected_features']:
         md.append('')
-        md.append('Esperadas y no detectadas: ' + ', '.join(branches_info['missing_expected']))
+        md.append('Features requeridas y no detectadas: ' + ', '.join(branches_info['missing_expected_features']))
+    else:
+        md.append('')
+        md.append('Features requeridas detectadas: ' + ', '.join(branches_info['found_expected_features']))
+    md.append('')
+    md.append('Rama principal detectada (main/master/default): ' + ('si' if branches_info['main_or_default_detected'] else 'no'))
     md.append('')
 
     md.append('## Evidencias detectadas (heuristica)')

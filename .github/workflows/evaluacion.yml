@@ -34,6 +34,10 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Obtener ramas remotas
+        run: |
+          git fetch --prune --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+
       - name: Ejecutar evaluacion
         env:
           MIN_COMMITS: ${{ github.event_name == 'workflow_dispatch' && inputs.min_commits || '3' }}
