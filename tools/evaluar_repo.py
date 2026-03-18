@@ -193,6 +193,33 @@ def analyze_branches(root: Path, default_branch: str | None = None) -> dict:
     }
 
 
+def detect_features_from_evidence(root: Path) -> dict:
+    expected_features = {'feature-mensaje-bienvenida', 'feature-licencia'}
+    candidates = [
+        root / 'cp1-ramas-iniciales.txt',
+        root / 'cp2-feature-branch.txt',
+        root / 'cp3-comparacion-ramas.md',
+        root / 'cp4-multiples-ramas.txt',
+    ]
+    scanned_files = []
+    found = set()
+
+    for p in candidates:
+        if not p.exists() or not p.is_file():
+            continue
+        scanned_files.append(str(p.relative_to(root)))
+        txt = safe_read_text(p).lower()
+        for b in expected_features:
+            if b.lower() in txt:
+                found.add(b)
+
+    return {
+        'found_features': sorted(found),
+        'missing_features': sorted(expected_features.difference(found)),
+        'scanned_files': scanned_files,
+    }
+
+
 def analyze_files(root: Path, exclude_dirs: set[str] | None = None) -> dict:
     exclude_dirs = exclude_dirs or set()
     large = []
@@ -249,6 +276,7 @@ def main():
 
     commits_info = analyze_commits(root)
     branches_info = analyze_branches(root, default_branch=default_branch)
+    evidence_branch_info = detect_features_from_evidence(root)
     missing = [f for f in required if not (root / f).exists()]
 
     readme_path = root / 'README.md'
@@ -287,7 +315,9 @@ def main():
 
     # Rúbrica oficial: 4 pts ramas + 3 pts evidencias + 3 pts reflexión = 10
     commits_ok = commits_info['count'] >= min_commits and commits_info['quality'] >= 0.6
-    features_found = len(branches_info['found_expected_features'])
+    found_features_set = set(branches_info['found_expected_features']).union(set(evidence_branch_info['found_features']))
+    missing_features_set = set(branches_info['expected_features']).difference(found_features_set)
+    features_found = len(found_features_set)
     main_found = bool(branches_info['main_or_default_detected'])
     if commits_ok and features_found >= 2 and main_found:
         s_git_ramas = 4
@@ -324,6 +354,12 @@ def main():
         'missing_required': missing,
         'commits': commits_info,
         'branches': branches_info,
+        'branch_evidence': {
+            'found_expected_features': sorted(found_features_set),
+            'missing_expected_features': sorted(missing_features_set),
+            'scanned_files': evidence_branch_info['scanned_files'],
+            'detected_only_in_evidence': sorted(set(evidence_branch_info['found_features']).difference(set(branches_info['found_expected_features']))),
+        },
         'readme_stats': readme_stats,
         'reflexion_stats': reflex_stats,
         'evidencias_encontradas': sorted(set(evidencias_presentes)),
@@ -429,12 +465,19 @@ def main():
             md.append(f"- {b}")
     else:
         md.append('- No se detectaron ramas en refs locales/remotas.')
-    if branches_info['missing_expected_features']:
+    if missing_features_set:
         md.append('')
-        md.append('Features requeridas y no detectadas: ' + ', '.join(branches_info['missing_expected_features']))
+        md.append('Features requeridas y no detectadas: ' + ', '.join(sorted(missing_features_set)))
     else:
         md.append('')
-        md.append('Features requeridas detectadas: ' + ', '.join(branches_info['found_expected_features']))
+        md.append('Features requeridas detectadas: ' + ', '.join(sorted(found_features_set)))
+    if evidence_branch_info['scanned_files']:
+        md.append('')
+        md.append('Evidencias revisadas para detectar ramas: ' + ', '.join(evidence_branch_info['scanned_files']))
+    detected_only_in_evidence = set(evidence_branch_info['found_features']).difference(set(branches_info['found_expected_features']))
+    if detected_only_in_evidence:
+        md.append('')
+        md.append('Features detectadas solo por evidencias (no como refs en repo): ' + ', '.join(sorted(detected_only_in_evidence)))
     md.append('')
     md.append('Rama principal detectada (main/master/default): ' + ('si' if branches_info['main_or_default_detected'] else 'no'))
     md.append('')
